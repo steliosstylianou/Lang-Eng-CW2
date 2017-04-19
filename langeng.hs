@@ -42,19 +42,18 @@ data Stm = Skip
          | Block DecV DecP Stm
          | Call Pname deriving (Show)
 
-
 whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
 statement =  parens statement
          <|> compStm
-         <|> blockStm
 
 compStm :: Parser Stm
 compStm =
   do list <- (sepBy1 statement' semi)
      return $ if length list == 1 then head list else (foldr1 Comp list)
+
 
 statement' :: Parser Stm
 statement' =  ifStm
@@ -72,7 +71,7 @@ ifStm =
     stm1 <- statement
     reserved "else"
     stm2 <- statement
-    return $ If cond stm1 stm2
+    return $ (If cond stm1 stm2)
 
 whileStm :: Parser Stm
 whileStm =
@@ -80,14 +79,14 @@ whileStm =
     cond <- bExpression
     reserved "do"
     stm <- statement
-    return $ While cond stm
+    return $ (While cond stm)
 
 assignStm :: Parser Stm
 assignStm =
  do var  <- identifier
     reservedOp ":="
     expr <- aExpression
-    return $ Ass var expr
+    return $ (Ass var expr)
 
 skipStm :: Parser Stm
 skipStm = reserved "skip" >> return Skip
@@ -99,9 +98,9 @@ blockStm =
     decp <- decp
     st <- statement
     reserved "end"
-    return $ Block decv decp st
+    return $ (Block decv decp st)
 
-decv :: Parser [(Var, Aexp)]
+decv :: Parser DecV
 decv = many decv'
 
 decv' :: Parser (Var,Aexp)
@@ -113,7 +112,7 @@ decv' =
      semi
      return $ (var, expr)
 
-decp :: Parser [(Pname, Stm)]
+decp :: Parser DecP
 decp = many decp'
 
 decp' :: Parser (Pname,Stm)
@@ -129,7 +128,7 @@ callStm :: Parser Stm
 callStm =
  do reserved "call"
     pnm <- identifier
-    return $ Call pnm
+    return $ (Call pnm)
 
 aExpression :: Parser Aexp
 aExpression = buildExpressionParser aOperators aTerm
@@ -206,7 +205,6 @@ languageDef =
           }
 
 lexer = Token.makeTokenParser languageDef
-
 
 identifier = Token.identifier lexer -- parses an identifier
 reserved   = Token.reserved   lexer -- parses a reserved name
