@@ -1,6 +1,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
-module ParseWhile where
 
+import Prelude hiding (Num)
 
 import System.IO
 import Control.Monad
@@ -17,9 +17,9 @@ type T = Bool
 
 type State = Var -> Z
 
-type Pname = String		--name
-type DecV = [(Var,Aexp)] 	--variable declarations
-type DecP = [(Pname,Stm)]	--proc name
+type Pname = String --name
+type DecV = [(Var,Aexp)] --variable declarations
+type DecP = [(Pname,Stm)] --proc name
 
 data Aexp = N Num
           | V Var
@@ -32,8 +32,7 @@ data Bexp = TRUE
           | Neg Bexp
           | And Bexp Bexp
           | Eq Aexp Aexp
-          | Le Aexp Aexp
-          | Imp Bexp Bexp deriving (Show, Eq, Read)
+          | Le Aexp Aexp deriving (Show, Eq, Read)
 
 data Stm = Skip
          | Ass Var Aexp
@@ -48,26 +47,22 @@ whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
-statement =   parens statement
+statement =  parens statement
          <|> compStm
          <|> blockStm
 
 compStm :: Parser Stm
 compStm =
-  do st1 <- statement'
-     semi
-     st2 <- statement'
-     return $ Comp st1 st2
+  do list <- (sepBy1 statement' semi)
+     return $ if length list == 1 then head list else (foldr1 Comp list)
 
-statement' :: Parser Stmt
-statement' =  ifStmt
-          <|> whileStmt
-          <|> skipStmt
-          <|> assignStmt
+statement' :: Parser Stm
+statement' =  ifStm
+          <|> whileStm
+          <|> skipStm
+          <|> assignStm
           <|> blockStm
           <|> callStm
-
-
 
 ifStm :: Parser Stm
 ifStm =
@@ -92,34 +87,95 @@ assignStm =
  do var  <- identifier
     reservedOp ":="
     expr <- aExpression
-    return $ Assign var expr
+    return $ Ass var expr
 
 skipStm :: Parser Stm
 skipStm = reserved "skip" >> return Skip
 
 blockStm :: Parser Stm
+blockStm =
+ do reserved "begin"
+    decv <- decv
+    decp <- decp
+    st <- statement
+    reserved "end"
+    return $ Block decv decp st
+
+decv :: Parser [(Var, Aexp)]
+decv = many decv'
+
+decv' :: Parser (Var,Aexp)
+decv' =
+  do reserved "var"
+     var  <- identifier
+     reservedOp ":="
+     expr <- aExpression
+     semi
+     return $ (var, expr)
+
+decp :: Parser [(Pname, Stm)]
+decp = many decp'
+
+decp' :: Parser (Pname,Stm)
+decp' =
+  do reserved "proc"
+     pnm <- identifier
+     reserved "is"
+     stm <- statement
+     semi
+     return $ (pnm, stm)
 
 callStm :: Parser Stm
+callStm =
+ do reserved "call"
+    pnm <- identifier
+    return $ Call pnm
 
+aExpression :: Parser Aexp
+aExpression = buildExpressionParser aOperators aTerm
 
+bExpression :: Parser Bexp
+bExpression = buildExpressionParser bOperators bTerm
 
+aOperators = [ [Infix  (reservedOp "*"   >> return (Mult)) AssocLeft]
+            ,  [Infix  (reservedOp "+"   >> return (Add)) AssocLeft ,
+               Infix  (reservedOp "-"   >> return (Sub)) AssocLeft]
+             ]
 
+bOperators = [ [Prefix (reservedOp "!" >> return (Neg))          ]
+            , [Infix  (reservedOp "&" >> return (And )) AssocLeft]
+            ]
 
+bTerm =  parens bExpression
+      <|> (reserved "true"  >> return (TRUE ))
+      <|> (reserved "false" >> return (FALSE))
+      <|> rExpression
 
+aTerm =  parens aExpression
+    <|> liftM V identifier
+    <|> liftM N integer
 
+rExpression =
+   do a1 <- aExpression
+      rel <- relation
+      a2 <- aExpression
+      return $ rel a1 a2
 
+relation =   (reservedOp "<=" >> return Le)
+        <|> (reservedOp "=" >> return Eq)
 
+parse' :: String -> Stm
+parse' str =
+ case parse whileParser "" str of
+      Left e  -> error $ show e
+      Right r -> r
 
-
-
-
-
-
-
-
-
-
-
+parseFile :: String -> IO Stm
+parseFile file =
+ do program  <- readFile file
+    case parse whileParser "" program of
+      Left e  -> print e >> fail "parse error"
+      Right r -> return r
 
 
 --LEXER
@@ -144,6 +200,7 @@ languageDef =
                                     , "call"
                                     , "proc"
                                     , "is"
+                                    , "var"
                                     ]
           , Token.reservedOpNames = ["+", "-", "*", ":=", "<=", "!", "&"]
           }
