@@ -1,6 +1,7 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
 import Prelude hiding (Num)
+import Debug.Trace
 
 import System.IO
 import Control.Monad
@@ -46,12 +47,11 @@ whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
-statement =  parens compStm
-         <|> compStm
+statement =   try compStm <|>  statement'
 
-compStm :: Parser Stm
-compStm = do st1 <- statement'
-             seqStmt st1 <|> return st1
+compStm ::  Parser Stm
+compStm  = statement' `chainr1` pComp
+pComp = semi >> return Comp
 
 statement' :: Parser Stm
 statement' =  ifStm
@@ -60,13 +60,7 @@ statement' =  ifStm
           <|> assignStm
           <|> blockStm
           <|> callStm
-
-seqStmt :: Stm -> Parser Stm
-seqStmt st1 =
-  do semi
-     st2 <- statement
-     return $ (Comp st1 st2)
-
+          <|> parens statement
 
                  {-
                  compStm :: Parser Stm
@@ -132,7 +126,7 @@ decp' =
   do reserved "proc"
      pnm <- identifier
      reserved "is"
-     stm <- statement
+     stm <- statement'
      semi
      return $ (pnm, stm)
 
@@ -228,6 +222,8 @@ parens     = Token.parens     lexer -- parses surrounding parenthesis:
 integer    = Token.integer    lexer -- parses an integer
 semi       = Token.semi       lexer -- parses a semicolon
 whiteSpace = Token.whiteSpace lexer -- parses whitespace
+semisep    = Token.semiSep    lexer
+symbol     = Token.symbol     lexer
 
 test2 = "//fac call (p.55)\n\
 \begin\n\
@@ -235,5 +231,5 @@ test2 = "//fac call (p.55)\n\
 \begin\n\
 \var z:=x;\n\
 \if x=1 then skip\n\
-\else x:=x-1; call fac; y:=z*y end;\n\
+\else (x:=x-1; call fac; y:=z*y) end;\n\
 \y:=1; call fac end"
