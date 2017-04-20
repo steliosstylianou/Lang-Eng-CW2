@@ -47,11 +47,8 @@ whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
-statement =   try compStm <|>  statement'
+statement =   try compStm
 
-compStm ::  Parser Stm
-compStm  = statement' `chainr1` pComp
-pComp = semi >> return Comp
 
 statement' :: Parser Stm
 statement' =  ifStm
@@ -62,12 +59,12 @@ statement' =  ifStm
           <|> callStm
           <|> parens statement
 
-                 {-
-                 compStm :: Parser Stm
-                 compStm =
-                   do list <- (sepBy1 statement' semi)
-                      return $ if length list == 1 then head list else (foldr1 Comp list)
-                 -}
+compStm ::  Parser Stm
+--compStm  = chainr1 statement' (semi >> return Comp)
+compStm =
+  do list <- (sepBy1 statement' semi)
+     return $ if length list == 1 then head list else (foldr1 Comp list)
+--using foldr to make ";" right associative 
 
 ifStm :: Parser Stm
 ifStm =
