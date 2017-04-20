@@ -46,14 +46,12 @@ whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
-statement =  parens statement
+statement =  parens compStm
          <|> compStm
 
 compStm :: Parser Stm
-compStm =
-  do list <- (sepBy1 statement' semi)
-     return $ if length list == 1 then head list else (foldr1 Comp list)
-
+compStm = do st1 <- statement'
+             seqStmt st1 <|> return st1
 
 statement' :: Parser Stm
 statement' =  ifStm
@@ -62,6 +60,20 @@ statement' =  ifStm
           <|> assignStm
           <|> blockStm
           <|> callStm
+
+seqStmt :: Stm -> Parser Stm
+seqStmt st1 =
+  do semi
+     st2 <- statement
+     return $ (Comp st1 st2)
+
+
+                 {-
+                 compStm :: Parser Stm
+                 compStm =
+                   do list <- (sepBy1 statement' semi)
+                      return $ if length list == 1 then head list else (foldr1 Comp list)
+                 -}
 
 ifStm :: Parser Stm
 ifStm =
