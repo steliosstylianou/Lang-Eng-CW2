@@ -1,5 +1,5 @@
 //fac call (p.55)
-begin 
+begin
 proc fac is
 begin
 var z:=x;
@@ -12,4 +12,4 @@ y:=z*y )
 end;
 y:=1;
 call fac
-end 
+end

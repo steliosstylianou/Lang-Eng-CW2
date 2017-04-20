@@ -94,14 +94,14 @@ skipStm = reserved "skip" >> return Skip
 blockStm :: Parser Stm
 blockStm =
  do reserved "begin"
-    decv <- decv
-    decp <- decp
+    decV <- decv
+    decP <- decp
     st <- statement
     reserved "end"
-    return $ (Block decv decp st)
+    return $ (Block decV decP st)
 
 decv :: Parser DecV
-decv = many decv'
+decv = sepBy decv' semi
 
 decv' :: Parser (Var,Aexp)
 decv' =
@@ -113,7 +113,7 @@ decv' =
      return $ (var, expr)
 
 decp :: Parser DecP
-decp = many decp'
+decp = sepBy decp' semi
 
 decp' :: Parser (Pname,Stm)
 decp' =
@@ -201,7 +201,7 @@ languageDef =
                                     , "is"
                                     , "var"
                                     ]
-          , Token.reservedOpNames = ["+", "-", "*", ":=", "<=", "!", "&"]
+          , Token.reservedOpNames = ["+", "-", "*", ":=", "<=", "!", "&", "="]
           }
 
 lexer = Token.makeTokenParser languageDef
@@ -216,3 +216,12 @@ parens     = Token.parens     lexer -- parses surrounding parenthesis:
 integer    = Token.integer    lexer -- parses an integer
 semi       = Token.semi       lexer -- parses a semicolon
 whiteSpace = Token.whiteSpace lexer -- parses whitespace
+
+test2 = "//fac call (p.55)\n\
+\begin\n\
+\proc fac is\n\
+\begin\n\
+\var z:=x;\n\
+\if x=1 then skip\n\
+\else x:=x-1; call fac; y:=z*y end;\n\
+\y:=1; call fac end"
