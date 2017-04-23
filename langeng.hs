@@ -59,12 +59,11 @@ statement' =  ifStm
           <|> callStm
           <|> parens statement
 
+compColon :: Parser (Stm -> Stm -> Stm)
+compColon = try (semi) >> return Comp
+
 compStm ::  Parser Stm
---compStm  = chainr1 statement' (semi >> return Comp)
-compStm =
-  do list <- (sepBy1 statement' semi)
-     return $ if length list == 1 then head list else (foldr1 Comp list)
---using foldr to make ";" right associative 
+compStm  = chainr1 statement' (semiColon)
 
 ifStm :: Parser Stm
 ifStm =
@@ -221,12 +220,3 @@ semi       = Token.semi       lexer -- parses a semicolon
 whiteSpace = Token.whiteSpace lexer -- parses whitespace
 semisep    = Token.semiSep    lexer
 symbol     = Token.symbol     lexer
-
-test2 = "//fac call (p.55)\n\
-\begin\n\
-\proc fac is\n\
-\begin\n\
-\var z:=x;\n\
-\if x=1 then skip\n\
-\else (x:=x-1; call fac; y:=z*y) end;\n\
-\y:=1; call fac end"
