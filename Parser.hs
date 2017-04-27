@@ -47,7 +47,7 @@ whileParser :: Parser Stm
 whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
-statement =   try compStm
+statement =   try compStm <|> statement'
 
 
 statement' :: Parser Stm
@@ -106,7 +106,7 @@ decv :: Parser DecV
 decv = many $ decv'
 
 decv' :: Parser (Var,Aexp)
-decv' = 
+decv' =
   do reserved "var"
      var  <- identifier
      reservedOp ":="
@@ -178,7 +178,6 @@ parseFile file =
       Left e  -> print e >> fail "parse error"
       Right r -> return r
 
-
 --LEXER
 
 languageDef =
@@ -220,6 +219,3 @@ semi       = Token.semi       lexer -- parses a semicolon
 whiteSpace = Token.whiteSpace lexer -- parses whitespace
 semisep    = Token.semiSep    lexer
 symbol     = Token.symbol     lexer
-
-
-
