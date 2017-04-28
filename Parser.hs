@@ -5,7 +5,7 @@ import Debug.Trace
 
 import System.IO
 import Control.Monad
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (State)
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
@@ -48,7 +48,6 @@ whileParser = whiteSpace >> statement
 
 statement :: Parser Stm
 statement =   try compStm <|> statement'
-
 
 statement' :: Parser Stm
 statement' =  ifStm
@@ -219,3 +218,134 @@ semi       = Token.semi       lexer -- parses a semicolon
 whiteSpace = Token.whiteSpace lexer -- parses whitespace
 semisep    = Token.semiSep    lexer
 symbol     = Token.symbol     lexer
+
+
+
+--EVALUATION FUNCTIONS
+
+
+n_val :: Num -> Z
+n_val a = a
+
+s :: State
+s _    = 0
+--s "x" = 3
+--s "y" = 0
+--s "z" = 0
+
+
+a_val :: Aexp -> (State -> Z)
+a_val (N num)           s = n_val num
+a_val (V var)           s = s var
+a_val (Mult aexp bexp)  s = a_val(aexp) s * a_val(bexp) s
+a_val (Add aexp bexp)   s = a_val(aexp) s + a_val(bexp) s
+a_val (Sub aexp bexp)   s = a_val(aexp) s - a_val(bexp) s
+
+b_val :: Bexp -> State -> T
+b_val (TRUE)          s = True
+b_val (FALSE)         s = False
+b_val (Neg bexp)      s = not (b_val (bexp) s)
+b_val (And aexp bexp) s = (b_val (aexp) s) && (b_val (bexp) s)
+b_val (Eq aexp bexp)  s = (a_val (aexp) s) == (a_val (bexp) s)
+b_val (Le aexp bexp)  s = (a_val (aexp) s) <=  (a_val (bexp) s)
+
+update :: State -> Z -> Var -> State
+update st i v v2
+      | v == v2 = i
+      | otherwise = (s v2)
+
+scope_stm = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p")] (Block [("x",N 5)] [("p",Ass "x" (Add (V "x") (N 1)))] (Comp (Call "q") (Ass "y" (V "x"))))
+
+type Loc = Integer
+data Config = Inter Stm State | Final State
+type Store = Loc -> Z  --store location's value
+type EnvV = Var -> Loc -- store variable's location
+type EnvP = Pname -> Stm
+
+next = 0
+
+--s_static :: Stm -> State -> State
+--s_mixed  :: Stm -> State -> State
+--s_dynamic :: Stm -> State -> State
+
+new :: Loc->Loc
+new loc = loc + 1
+
+update_store :: Store -> Z -> Var -> State
+update_store st i v v2
+      | v == v2 = i
+      | otherwise = (s v2)
+
+
+lookup :: EnvV -> Store -> State
+lookup envv sto = sto . envv
+
+s_static :: Stm -> State -> State
+s_static stm s = undefined
+
+
+
+s_dynamic :: Stm -> State -> State
+s_dynamic stm s = s'
+ where
+  Final s' = d_eval (Inter stm s) 
+
+d_eval :: EnvV -> EnvP -> Config -> Config --pg 57
+d_eval envv envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
+d_eval envv envp (Inter (Skip) s) = Final s
+d_eval envv envp (Inter (Comp s1 s2) s) = d_eval envv envp (Inter s2 s) . d_eval envv envp (Inter s1 s)
+d_eval envv envp (Inter (If bexp s1 s2) s) 
+                          | b_val bexp == True  = d_eval envp (Inter s1) s
+                          | b_val bexp == False = d_eval envp (Inter s2) s
+                            where 
+d_eval envv envp (Inter (While b ss) s)
+                          | b_val b == True  = Final s2
+                          | b_val b == False = d_eval envp (Skip) s
+                           where 
+                           Final s1 = d_eval (Inter ss s)
+                           Final s2 = d_eval (Inter (While b ss) s1)
+d_eval envv envp (Inter (Block decv decp stm) s) = d_eval envv (d_updateEnvPs envp envp stm) Inter stm 
+d_eval envv envp (Inter (Call name) s) = d_eval (Inter (envp name) s)
+
+
+d_updateEnvPs :: EnvP -> DecP -> EnvP
+d_updateEnvPs env ((pname,stms):others)  = d_updateEnvP others (envP_check env stms pname)	--pg55
+d_updateEnvPs env [] = env
+
+d_updateEnvP :: Envp -> Pname -> Stm -> Envp
+d_updateEnvP (pname,stm) p s 
+                 | pname == p = s
+                 | otherwise  = (pname,stm)
+
+d_updateEnvPs :: DecV -> State -> State
+d_updateEnvPs decv state   = d_updateEnvP others (envP_check env stms pname)	--pg55
+d_updateEnvPs env [] = env
+
+d_updateEnvP :: Envp -> Pname -> Stm -> Envp
+d_updateEnvP (pname,stm) p s 
+                 | pname == p = s
+                 | otherwise  = (pname,stm)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
