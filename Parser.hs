@@ -17,6 +17,9 @@ import Data.Maybe
 type Num = Integer
 type Var = String
 
+fix :: (a -> a) -> a
+fix f = let {x = f x} in x
+
 type Z = Integer
 type T = Bool
 
@@ -174,14 +177,6 @@ parse str =
       Left e  -> error $ show e
       Right r -> r
 
-{-- parseFile :: String -> IO Stm
-parseFile file =
- do program  <- readFile file
-    case parse whileParser "" program of
-      Left e  -> print e >> fail "parse error"
-      Right r -> return r
-      --}
-
 --LEXER
 
 languageDef =
@@ -256,39 +251,36 @@ update st i v v2
 
 
 ------------------------------------------------------------------------
-------------------------------------------------------------------------
-
-type Loc = Integer
-data Config = Inter Stm State | Final State
-type Store = Loc -> Z  --store location's value
-type EnvV = Var -> Loc -- store variable's location
-
-next = 0
-
-------------------------------------------------------------------------
 -- STATIC
 ------------------------------------------------------------------------
-{--
+
+type Loc = Int
+data Config_s = Inter_s Stm Store | Final_s Store
+type Store = Loc -> Z  --store location's value
+type EnvV = Var -> Loc -- store variable's location
+newtype EnvP_s = EnvP_s(Pname -> (Stm, EnvV, EnvP_s))
+next = 0
+init_envv :: EnvV
+init_envv _ = 0
+
 new :: Loc->Loc
 new loc = loc + 1
 
-upd_P ::
-update_store :: Store -> Z -> Var -> State
-update_store st i v v2
+update_store :: Store -> Z -> Loc -> Store
+update_store store i v v2
       | v == v2 = i
-      | otherwise = (s v2)
+      | otherwise = (store v2)
 
-
-lookup :: EnvV -> Store -> State
-lookup envv sto = sto . envv
+lookup_s :: EnvV -> Store -> Z
+lookup_s envv sto = sto.envv
 
 s_static :: Stm -> State -> State
 s_static stm s = undefined
 
-s_eval :: EnvV -> EnvP -> Config -> Config --pg 57
-s_eval envv envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
-s_eval envv envp (Inter (Skip) s) = Final s
-s_eval envv envp (Inter (Comp s1 s2) s) = s_eval envv envp (Inter s2 s) . s_eval envv envp (Inter s1 s)
+s_eval :: EnvV -> EnvP_s -> Config_s -> Config_s --pg 57
+s_eval envv envp (Inter (Ass x a) sto) = Final_s (update_store sto (a_val a (lookup_s decv sto)) (decv x)) --store,updated value, location
+s_eval envv envp (Inter (Skip) sto) = Final_s sto
+s_eval envv envp (Inter (Comp s1 s2) s) = s_eval envv envp Inter_s s2 . s_eval envv envp (Inter_s s1 s)
 s_eval envv envp (Inter (If bexp s1 s2) s)
                           | b_val bexp == True  = s_eval envv envp (Inter s1 s)
                           | b_val bexp == False = s_eval envv envp (Inter s2 s)
@@ -307,6 +299,7 @@ s_eval envv envp (Inter (Call name) s) = undefined --d_eval (Inter (envp name) s
 -- DYNAMIC
 ------------------------------------------------------------------------
 type EnvP_d = Pname -> Stm
+data Config = Inter Stm State | Final State
 
 dynamic_state :: State
 dynamic_state "x" = 5
@@ -371,28 +364,83 @@ d_updateDp envp (pname,stm) = \p -> if
 
 scope_test :: Stm
 scope_test = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p")] (Block [("x",N 5)] [("p",Ass "x" (Add (V "x") (N 1)))] (Comp (Call "q") (Ass "y" (V "x"))))
-fac_while:: Stm
-fac_while = (Comp (Ass "y" (N 1)) (While (Neg (Eq (V "x") (N 1))) (Comp (Ass "y" (Mult (V "y") (V "x"))) (Ass "x" (Sub (V "x") (N 1))))))
-
 
 ------------------------------------------------------------------------
 -- MIXED
 ------------------------------------------------------------------------
-type EnvP_m = Pname -> Stm
+newtype EnvP_m = EnvP_m (Pname -> (Stm -> EnvP_m))
+
 mixed_state :: State
 mixed_state "x" = 5
 mixed_state _ = 0
 
-mixed_env :: EnvP
-mixed_env _ =
+mixed_env :: EnvP_m
+mixed_env = undefined
+
+var_state_m :: Var -> Stm -> Integer
+var_state_m v stm = state v
+          where state = s_mixed stm mixed_state
+
 
 s_mixed :: Stm -> State -> State
 s_mixed stm s = state
           where
-          Final state = d_eval dynamic_env (Inter stm s )
+          Final state = m_eval mixed_env (Inter stm s )
 
-d_eval :: EnvV -> EnvP -> Config -> Config --pg 57
+m_eval :: EnvP_m -> Config -> Config --pg 57
+m_eval  envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
+m_eval  envp (Inter (Skip) s) = Final s
+m_eval  envp (Inter (Comp stm1 stm2) s) = Final s2
+                             where
+                             Final s1 = m_eval envp (Inter stm1 s)
+                             Final s2 = m_eval envp (Inter stm2 s1)
+m_eval  envp (Inter (If bexp s1 s2) s)
+                          | b_val bexp s = m_eval envp (Inter s1 s)
+                          | otherwise    = m_eval envp (Inter s2 s)
+m_eval envp (Inter (While b ss) s)
+                          | b_val b s  = Final s2
+                          | otherwise  = Final s
+                           where
+                           Final s1 = m_eval envp (Inter ss s)
+                           Final s2 = m_eval envp (Inter (While b ss) s1)
+m_eval  envp (Inter (Block decv decp stm) s) = Final new_state
+                                              where
+                                              new_state = m_updateBlock s (map fst decv) state'
+                                              Final state' = (m_eval (m_updateDps envp decp) (Inter stm (m_updateDvs s decv)))
+m_eval  envp (Inter (Call name) s) = undefined
 
-var_state_d :: Var -> Stm -> Integer
-var_state_d v stm = state v
-          where state = s_dynamic stm dynamic_state
+m_updateBlock :: State -> [Var] -> State -> State
+m_updateBlock s1 [] s2 = s2
+m_updateBlock s1 (var:vars) s2 = m_updateBlock s1 vars (update s2 (s1 var) var)
+
+--pg 55
+m_updateDvs :: State -> DecV -> State
+m_updateDvs state ((var,aexp):others) = m_updateDvs (m_updateDv state (var,aexp)) others
+m_updateDvs state [] = state
+
+m_updateDv :: State -> (Var, Aexp) -> State
+m_updateDv state (var,aexp) = \p -> if
+                            | p == var -> a_val aexp state
+                            | otherwise  -> state p
+
+m_updateDps :: EnvP_m -> DecP -> EnvP_m
+m_updateDps env ((pname,stms):decps) = m_updateDps (m_updateDp env (pname, stms)) decps  --pg55
+m_updateDps env [] = env
+
+m_updateDp :: EnvP_m -> (Pname, Stm) -> EnvP_m
+m_updateDp (env) (pname,stm) = undefined {--\p -> if
+                            | p == pname -> stm
+                            | otherwise  -> env pname --}
+
+-- x=11
+recursive_stm = parse "\
+\x := 1; begin \
+ \proc fac1 is begin \
+   \if x<=10 then \
+     \x:=x+1; \
+     \call fac1 \
+   \else \
+     \skip \
+ \end; \
+ \call fac1 \
+\end"
