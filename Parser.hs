@@ -6,7 +6,8 @@ import Debug.Trace
 
 import System.IO
 import Control.Monad
-import Text.ParserCombinators.Parsec hiding (State)
+import Text.ParserCombinators.Parsec hiding (State, parse)
+import qualified Text.ParserCombinators.Parsec as Pars
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
@@ -167,9 +168,9 @@ rExpression =
 relation =   (reservedOp "<=" >> return Le)
         <|> (reservedOp "=" >> return Eq)
 
-parse' :: String -> Stm
-parse' str =
- case parse whileParser "" str of
+parse :: String -> Stm
+parse str =
+ case Pars.parse whileParser "" str of
       Left e  -> error $ show e
       Right r -> r
 
@@ -233,17 +234,6 @@ symbol     = Token.symbol     lexer
 n_val :: Num -> Z
 n_val a = a
 
-s :: State
---s_fun "x" = 5
-s _ = 0;
-
-
-
---s "x" = 3
---s "y" = 0
---s "z" = 0
-
-
 a_val :: Aexp -> (State -> Z)
 a_val (N num)           s = n_val num
 a_val (V var)           s = s var
@@ -262,10 +252,7 @@ b_val (Le aexp bexp)  s = (a_val (aexp) s) <=  (a_val (bexp) s)
 update :: State -> Z -> Var -> State
 update st i v v2
       | v == v2 = i
-      | otherwise = (s v2)
-
-scope_stm = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p")] (Block [("x",N 5)] [("p",Ass "x" (Add (V "x") (N 1)))] (Comp (Call "q") (Ass "y" (V "x"))))
-
+      | otherwise = (st v2)
 
 
 ------------------------------------------------------------------------
@@ -275,7 +262,6 @@ type Loc = Integer
 data Config = Inter Stm State | Final State
 type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
-type EnvP = Pname -> Stm
 
 next = 0
 
@@ -320,12 +306,13 @@ s_eval envv envp (Inter (Call name) s) = undefined --d_eval (Inter (envp name) s
 ------------------------------------------------------------------------
 -- DYNAMIC
 ------------------------------------------------------------------------
+type EnvP_d = Pname -> Stm
 
 dynamic_state :: State
 dynamic_state "x" = 5
 dynamic_state _ = 0
 
-dynamic_env :: EnvP
+dynamic_env :: EnvP_d
 dynamic_env _ = undefined
 
 s_dynamic :: Stm -> State -> State
@@ -337,7 +324,7 @@ var_state_d :: Var -> Stm -> Integer
 var_state_d v stm = state v
           where state = s_dynamic stm dynamic_state
 
-d_eval :: EnvP -> Config -> Config --pg 57
+d_eval :: EnvP_d -> Config -> Config --pg 57
 d_eval  envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
 d_eval  envp (Inter (Skip) s) = Final s
 d_eval  envp (Inter (Comp stm1 stm2) s) = Final s2
@@ -354,12 +341,10 @@ d_eval envp (Inter (While b ss) s)
                            Final s1 = d_eval envp (Inter ss s)
                            Final s2 = d_eval envp (Inter (While b ss) s1)
 d_eval  envp (Inter (Call name) s) = d_eval envp (Inter (envp name) s)
-d_eval  envp (Inter (Block decv decp stm) s) = undefined
-
---Final new_state
-  --                                             where
-    --                                              new_state = d_updateBlock s (map fst decv) state'
-      --                                            Final state' = (d_eval (d_updateDps envp decp) (Inter stm (d_updateDvs s decv)))
+d_eval  envp (Inter (Block decv decp stm) s) = Final new_state
+                                              where
+                                              new_state = d_updateBlock s (map fst decv) state'
+                                              Final state' = (d_eval (d_updateDps envp decp) (Inter stm (d_updateDvs s decv)))
 --pg 52
 d_updateBlock :: State -> [Var] -> State -> State
 d_updateBlock s1 [] s2 = s2
@@ -375,11 +360,11 @@ d_updateDv state (var,aexp) = \p -> if
                             | p == var -> a_val aexp state
                             | otherwise  -> state p
 
-d_updateDps :: EnvP -> DecP -> EnvP
+d_updateDps :: EnvP_d -> DecP -> EnvP_d
 d_updateDps env ((pname,stms):decps) = d_updateDps (d_updateDp env (pname, stms)) decps  --pg55
 d_updateDps env [] = env
 
-d_updateDp :: EnvP -> (Pname, Stm) -> EnvP
+d_updateDp :: EnvP_d -> (Pname, Stm) -> EnvP_d
 d_updateDp envp (pname,stm) = \p -> if
                             | p == pname -> stm
                             | otherwise  -> envp p
@@ -389,28 +374,25 @@ scope_test = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p"
 fac_while:: Stm
 fac_while = (Comp (Ass "y" (N 1)) (While (Neg (Eq (V "x") (N 1))) (Comp (Ass "y" (Mult (V "y") (V "x"))) (Ass "x" (Sub (V "x") (N 1))))))
 
+
 ------------------------------------------------------------------------
 -- MIXED
 ------------------------------------------------------------------------
-{--
+type EnvP_m = Pname -> Stm
+mixed_state :: State
+mixed_state "x" = 5
+mixed_state _ = 0
+
+mixed_env :: EnvP
+mixed_env _ =
+
 s_mixed :: Stm -> State -> State
-s_mixed stm s   = undefined
+s_mixed stm s = state
+          where
+          Final state = d_eval dynamic_env (Inter stm s )
 
-runDynamic :: [(Var, Z)] -> Stm -> [(Var, Z)]
-runDynamic vars stm = extractState (s_dynamic stm (createState vars)) (fst (unzip vars))
+d_eval :: EnvV -> EnvP -> Config -> Config --pg 57
 
-runMixed :: [(Var, Z)] -> Stm -> [(Var, Z)]
-runMixed vars stm = extractState (s_mixed stm (createState vars)) (fst (unzip vars))
-
-runStatic :: [(Var, Z)] -> Stm -> [(Var, Z)]
-runStatic vars stm = extractState (s_static stm (createState vars)) (fst (unzip vars))
-
-createState :: [(Var, Z)] -> State
-createState vars x = case elemIndex x (fst (unzip vars)) of
-    Just index -> snd (vars !! index)
-    Nothing -> 0
-
-extractState :: State -> [Var] -> [(Var, Z)]
-extractState state var_names = map (\var_name -> (var_name, state var_name)) var_names
-
---}
+var_state_d :: Var -> Stm -> Integer
+var_state_d v stm = state v
+          where state = s_dynamic stm dynamic_state
