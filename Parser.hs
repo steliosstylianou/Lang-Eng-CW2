@@ -6,7 +6,7 @@ import Debug.Trace
 
 import System.IO
 import Control.Monad
-import Text.ParserCombinators.Parsec hiding (State, parse)
+import Text.ParserCombinators.Parsec hiding (State)
 import Text.ParserCombinators.Parsec.Expr
 import Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token as Token
@@ -321,19 +321,29 @@ s_eval envv envp (Inter (Call name) s) = undefined --d_eval (Inter (envp name) s
 -- DYNAMIC
 ------------------------------------------------------------------------
 
-startEnvp :: EnvP
-startEnvp = Skip
+dynamic_state :: State
+dynamic_state "x" = 5
+dynamic_state _ = 0
+
+dynamic_env :: EnvP
+dynamic_env _ = undefined
 
 s_dynamic :: Stm -> State -> State
-s_dynamic stm s = undefined
+s_dynamic stm s = state
+          where
+          Final state = d_eval dynamic_env (Inter stm s )
+
+var_state_d :: Var -> Stm -> Integer
+var_state_d v stm = state v
+          where state = s_dynamic stm dynamic_state
 
 d_eval :: EnvP -> Config -> Config --pg 57
 d_eval  envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
 d_eval  envp (Inter (Skip) s) = Final s
-d_eval  envp (Inter (Comp s1 s2) s) = Final state
+d_eval  envp (Inter (Comp stm1 stm2) s) = Final s2
                              where
-                             Final state1 = d_eval envp (Inter s1 s)
-                             Final state = d_eval envp (Inter s2 state1)
+                             Final s1 = d_eval envp (Inter stm1 s)
+                             Final s2 = d_eval envp (Inter stm2 s1)
 d_eval  envp (Inter (If bexp s1 s2) s)
                           | b_val bexp s = d_eval envp (Inter s1 s)
                           | otherwise = d_eval envp (Inter s2 s)
@@ -343,18 +353,41 @@ d_eval envp (Inter (While b ss) s)
                            where
                            Final s1 = d_eval envp (Inter ss s)
                            Final s2 = d_eval envp (Inter (While b ss) s1)
-d_eval  envp (Inter (Block decv decp stm) s) = Final s_retain s (s_dynamic_eval (decP_eval dp e) s1 (decV_eval dv s)) dv
-
 d_eval  envp (Inter (Call name) s) = d_eval envp (Inter (envp name) s)
+d_eval  envp (Inter (Block decv decp stm) s) = undefined
+
+--Final new_state
+  --                                             where
+    --                                              new_state = d_updateBlock s (map fst decv) state'
+      --                                            Final state' = (d_eval (d_updateDps envp decp) (Inter stm (d_updateDvs s decv)))
+--pg 52
+d_updateBlock :: State -> [Var] -> State -> State
+d_updateBlock s1 [] s2 = s2
+d_updateBlock s1 (var:vars) s2 = d_updateBlock s1 vars (update s2 (s1 var) var)
+
+--pg 55
+d_updateDvs :: State -> DecV -> State
+d_updateDvs state ((var,aexp):others) = d_updateDvs (d_updateDv state (var,aexp)) others
+d_updateDvs state [] = state
+
+d_updateDv :: State -> (Var, Aexp) -> State
+d_updateDv state (var,aexp) = \p -> if
+                            | p == var -> a_val aexp state
+                            | otherwise  -> state p
 
 d_updateDps :: EnvP -> DecP -> EnvP
-d_updateDps env ((pname,stms):others) = d_updateDps (d_updateDp env (pname, stms)) others  --pg55
+d_updateDps env ((pname,stms):decps) = d_updateDps (d_updateDp env (pname, stms)) decps  --pg55
 d_updateDps env [] = env
 
 d_updateDp :: EnvP -> (Pname, Stm) -> EnvP
 d_updateDp envp (pname,stm) = \p -> if
                             | p == pname -> stm
                             | otherwise  -> envp p
+
+scope_test :: Stm
+scope_test = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p")] (Block [("x",N 5)] [("p",Ass "x" (Add (V "x") (N 1)))] (Comp (Call "q") (Ass "y" (V "x"))))
+fac_while:: Stm
+fac_while = (Comp (Ass "y" (N 1)) (While (Neg (Eq (V "x") (N 1))) (Comp (Ass "y" (Mult (V "y") (V "x"))) (Ass "x" (Sub (V "x") (N 1))))))
 
 ------------------------------------------------------------------------
 -- MIXED
