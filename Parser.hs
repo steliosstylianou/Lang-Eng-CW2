@@ -253,12 +253,13 @@ update st i v v2
 ------------------------------------------------------------------------
 -- STATIC
 ------------------------------------------------------------------------
-
+{--
 type Loc = Int
 data Config_s = Inter_s Stm Store | Final_s Store
 type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s(Pname -> (Stm, EnvV, EnvP_s))
+
 next = 0
 init_envv :: EnvV
 init_envv _ = 0
@@ -271,8 +272,8 @@ update_store store i v v2
       | v == v2 = i
       | otherwise = (store v2)
 
-lookup_s :: EnvV -> Store -> Z
-lookup_s envv sto = sto.envv
+lookup_s :: Store -> EnvV -> Z
+lookup_s sto env = sto.env
 
 s_static :: Stm -> State -> State
 s_static stm s = undefined
@@ -368,7 +369,7 @@ scope_test = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p"
 ------------------------------------------------------------------------
 -- MIXED
 ------------------------------------------------------------------------
-newtype EnvP_m = EnvP_m (Pname -> (Stm -> EnvP_m))
+newtype EnvP_m = EnvP_m (Pname -> (Stm, EnvP_m))
 
 mixed_state :: State
 mixed_state "x" = 5
@@ -428,10 +429,7 @@ m_updateDps env ((pname,stms):decps) = m_updateDps (m_updateDp env (pname, stms)
 m_updateDps env [] = env
 
 m_updateDp :: EnvP_m -> (Pname, Stm) -> EnvP_m
-m_updateDp (env) (pname,stm) = undefined {--\p -> if
-                            | p == pname -> stm
-                            | otherwise  -> env pname --}
-
+m_updateDp (EnvP_m envp) (pname,stm) = undefined
 -- x=11
 recursive_stm = parse "\
 \x := 1; begin \
