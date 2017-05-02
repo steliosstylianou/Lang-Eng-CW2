@@ -369,7 +369,7 @@ scope_test = Block [("x",N 0)] [("p",Ass "x" (Mult (V "x") (N 2))),("q",Call "p"
 ------------------------------------------------------------------------
 -- MIXED
 ------------------------------------------------------------------------
-newtype EnvP_m = EnvP_m (Pname -> (Stm, EnvP_m))
+newtype EnvP_m = EnvP_m {procenv :: Pname -> (Stm, EnvP_m)}
 
 mixed_state :: State
 mixed_state "x" = 5
@@ -408,7 +408,12 @@ m_eval  envp (Inter (Block decv decp stm) s) = Final new_state
                                               where
                                               new_state = m_updateBlock s (map fst decv) state'
                                               Final state' = (m_eval (m_updateDps envp decp) (Inter stm (m_updateDvs s decv)))
-m_eval  envp (Inter (Call name) s) = undefined
+m_eval  envp (Inter (Call name) s) = new_state
+                                      where
+                                      new_state = m_eval mixed_envp (Inter stms s)
+                                      (stms, envp') = procenv envp name
+                                      mixed_envp = m_updateDps envp' declars
+                                      declars = [(name, stms)]
 
 m_updateBlock :: State -> [Var] -> State -> State
 m_updateBlock s1 [] s2 = s2
@@ -428,8 +433,11 @@ m_updateDps :: EnvP_m -> DecP -> EnvP_m
 m_updateDps env ((pname,stms):decps) = m_updateDps (m_updateDp env (pname, stms)) decps  --pg55
 m_updateDps env [] = env
 
+
 m_updateDp :: EnvP_m -> (Pname, Stm) -> EnvP_m
-m_updateDp (EnvP_m envp) (pname,stm) = undefined
+m_updateDp envp (pname,stm) = (EnvP_m) (\p -> if
+                            | p == pname -> (stm,envp)
+                            | otherwise  -> procenv envp p )
 -- x=11
 recursive_stm = parse "\
 \x := 1; begin \
