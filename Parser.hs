@@ -279,7 +279,7 @@ type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s { s_env :: Pname -> (Stm, EnvV, EnvP_s)}
 
-next = 0
+next = 3
 
 init_envv :: EnvV
 init_envv _ = 0
@@ -295,8 +295,16 @@ general_update st i v v2
 lookup_s ::EnvV -> Store -> State
 lookup_s  env sto = sto.env
 
+vars :: [Var]
+vars = ["x","y","z"]
+
+extractState :: State -> [(Var, Z)]
+extractState state  = map (\var_name -> (var_name, state var_name)) vars
+
+
+
 static_store :: Store
-static_store _ = 0
+static_store _ = 5
 
 static_envP :: EnvP_s
 static_envP = undefined
@@ -330,13 +338,13 @@ s_eval envv envp (Inter_s (While b ss) sto)
                            Final_s (sto1,envv') = s_eval envv envp (Inter_s ss sto)
                            Final_s (sto2,envv'') = s_eval envv' envp  (Inter_s (While b ss) sto1)
 
-{- s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm sto)
+s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm sto)
                                                      where
                                                        envp'        = s_updateDps envp envv decp
                                                        (envv',sto) = s_updateDvs decv envv s
 s_eval envv (EnvP_s envp) (Inter_s (Call name) s) = s_eval envv' envp' (Inter_s stm s)
                                            where
-                                             (stm, envv', envp') = envp name -}
+                                             (stm, envv', envp') = envp name 
 
 --pg 58
 s_updateDvs :: DecV -> EnvV -> Store -> (EnvV, Store)
