@@ -246,6 +246,15 @@ fv_bexp (Le  b1 b2) = (fv_aexp b1) +++ (fv_aexp b2)
 fv_bexp (Neg b  ) =  fv_bexp b
 fv_bexp (And b1 b2) = (fv_bexp b1) +++ (fv_bexp b2)
 
+fv_stm :: Stm -> [Var]
+fv_stm (Skip )    = []
+fv_stm (Ass v a)    = (fv_aexp a ) +++ [v]
+fv_stm (Comp ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2)
+fv_stm (If b ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2) +++ (fv_bexp b)
+fv_stm (While b ss )    = (fv_bexp b ) +++ (fv_stm ss )
+fv_stm (Block decv decp stms) = (map fst decv ) +++ concat (map fv_stm (map snd decp)) +++ (fv_stm stms )
+fv_stm (Call name)    = []
+
 n_val :: Num -> Z
 n_val a = a
 
@@ -279,7 +288,7 @@ type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s { s_env :: Pname -> (Stm, EnvV, EnvP_s)}
 
-next = 3
+next = 0
 
 init_envv :: EnvV
 init_envv _ = 0
@@ -301,10 +310,10 @@ vars = ["x","y","z"]
 extractState :: State -> [(Var, Z)]
 extractState state  = map (\var_name -> (var_name, state var_name)) vars
 
-
-
 static_store :: Store
-static_store _ = 5
+static_store = \p -> if
+                | p == next -> 1
+                | otherwise  -> 0
 
 static_envP :: EnvP_s
 static_envP = undefined
@@ -313,12 +322,20 @@ static_envV :: EnvV
 static_envV = \p -> 0
 
 s_static :: Stm -> State -> State
-s_static stm state = lookup_s env s
-                where
-                  Final_s (s,env) = s_eval static_envV static_envP (Inter_s stm static_store)
+s_static stm state = do
+                      (store, envv ) <- extract_store state (static_store) (static_envV) (fv_stm stm)
+                      return (lookup_s envv (s_eval envv static_envP (Inter_s stm store) ) )
+
+extract_store :: State -> Store -> EnvV -> [Var] -> (Store, EnvV)
+extract_store state store envv []   = (store, envv)
+extract_store state store envv (var:vars) = extract_store state store' (general_update envv (store next) var ) vars
+    where  store' x
+            | x == store next = state var
+            | x == next     = new (store next)
+            | otherwise     = store x
 
 s_eval :: EnvV -> EnvP_s -> Config_s -> Config_s --pg 57
-s_eval envv envp (Inter_s (Ass x a) sto) = Final_s ((general_update (sto) (a_val a (lookup_s envv sto )) (envv x)),envv) --store,updated value, location
+s_eval envv envp (Inter_s (Ass x a) sto) = Final_s ((general_update (sto) (a_val a (lookup_s envv sto )) (envv x)),  envv) --store,updated value, location
 
 s_eval envv envp (Inter_s (Skip) sto) = Final_s (sto,envv)
 
@@ -344,7 +361,7 @@ s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s
                                                        (envv',sto) = s_updateDvs decv envv s
 s_eval envv (EnvP_s envp) (Inter_s (Call name) s) = s_eval envv' envp' (Inter_s stm s)
                                            where
-                                             (stm, envv', envp') = envp name 
+                                             (stm, envv', envp') = envp name
 
 --pg 58
 s_updateDvs :: DecV -> EnvV -> Store -> (EnvV, Store)
@@ -512,4 +529,5 @@ recursive_stm = parse "\
  \call fac1 \
 \end"
 
-fac = parse "/*fac_loop (p.23)*/\ny:=1;\nwhile !(x=1) do (\n y:=y*x;\n x:=x-1\n)"
+fac = parse "/*fac_loop (p.23)*/\nx:= 5; y:=1;\nwhile !(x=1) do (\n y:=y*x;\n x:=x-1\n)"
+assin = parse "x:= 5; y:= 6;"
