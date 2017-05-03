@@ -311,27 +311,32 @@ s_static stm state = lookup_s env s
 
 s_eval :: EnvV -> EnvP_s -> Config_s -> Config_s --pg 57
 s_eval envv envp (Inter_s (Ass x a) sto) = Final_s ((general_update (sto) (a_val a (lookup_s envv sto )) (envv x)),envv) --store,updated value, location
+
 s_eval envv envp (Inter_s (Skip) sto) = Final_s (sto,envv)
+
 s_eval envv envp (Inter_s (Comp s1 s2) sto) = Final_s (sto2,envv'')
                                               where
                                                  Final_s (sto1,envv') = s_eval envv envp (Inter_s s1 sto)
                                                  Final_s (sto2,envv'') = s_eval envv' envp (Inter_s s2 sto1)
+
 s_eval envv envp (Inter_s (If bexp s1 s2) sto)
                           | b_val bexp (lookup_s envv sto ) = s_eval envv envp (Inter_s s1 sto)
                           | otherwise =  s_eval envv envp (Inter_s s2 sto)
+
 s_eval envv envp (Inter_s (While b ss) sto)
                           | b_val b (lookup_s envv sto )  = Final_s (sto2,envv'')
                           | otherwise = Final_s (sto,envv)
                            where
                            Final_s (sto1,envv') = s_eval envv envp (Inter_s ss sto)
                            Final_s (sto2,envv'') = s_eval envv' envp  (Inter_s (While b ss) sto1)
-s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm sto)
+
+{- s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm sto)
                                                      where
                                                        envp'        = s_updateDps envp envv decp
                                                        (envv',sto) = s_updateDvs decv envv s
 s_eval envv (EnvP_s envp) (Inter_s (Call name) s) = s_eval envv' envp' (Inter_s stm s)
                                            where
-                                             (stm, envv', envp') = envp name
+                                             (stm, envv', envp') = envp name -}
 
 --pg 58
 s_updateDvs :: DecV -> EnvV -> Store -> (EnvV, Store)
@@ -486,7 +491,6 @@ m_updateDp :: EnvP_m -> (Pname, Stm) -> EnvP_m
 m_updateDp envp (pname,stm) = (EnvP_m) (\p -> if
                             | p == pname -> (stm,envp)
                             | otherwise  -> m_env envp p )
-
 
 recursive_stm = parse "\
 \x := 1; begin \
