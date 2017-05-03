@@ -279,7 +279,6 @@ type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s { s_env :: Pname -> (Stm, EnvV, EnvP_s)}
 
-
 next = 0
 
 init_envv :: EnvV
@@ -296,7 +295,6 @@ general_update st i v v2
 lookup_s ::EnvV -> Store -> State
 lookup_s  env sto = sto.env
 
---TODO IS THIS CORRECT
 static_store :: Store
 static_store _ = 0
 
@@ -305,10 +303,6 @@ static_envP = undefined
 
 static_envV :: EnvV
 static_envV = \p -> 0
-
-var_state_s :: Var -> Stm -> Integer
-var_state_s v stm = state v
-          where state = s_static stm dynamic_state
 
 s_static :: Stm -> State -> State
 s_static stm state = lookup_s env s
@@ -376,10 +370,6 @@ s_dynamic stm s = state
           where
           Final state = d_eval dynamic_env (Inter stm s )
 
-var_state_d :: Var -> Stm -> Integer
-var_state_d v stm = state v
-          where state = s_dynamic stm dynamic_state
-
 d_eval :: EnvP_d -> Config -> Config --pg 57
 d_eval  envp (Inter (Ass x a) s) = Final (update s (a_val a s) x)
 d_eval  envp (Inter (Skip) s) = Final s
@@ -439,11 +429,6 @@ mixed_state _ = 0
 
 mixed_env :: EnvP_m
 mixed_env = undefined
-
-var_state_m :: Var -> Stm -> Integer
-var_state_m v stm = state v
-          where state = s_mixed stm mixed_state
-
 
 s_mixed :: Stm -> State -> State
 s_mixed stm s = state
