@@ -225,17 +225,35 @@ symbol     = Token.symbol     lexer
 
 --EVALUATION FUNCTIONS
 
-fv_stm :: Stm -> [Var]
-fv_stm (N n) = []
-fv_stm (V x) = [x]
-fv_stm (Add a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
-fv_stm (Mult a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
-fv_stm (Sub a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
+fv_aexp :: Aexp -> [Var]
+fv_aexp (N n) = []
+fv_aexp (V x) = [x]
+fv_aexp (Add a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
+fv_aexp (Mult a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
+fv_aexp (Sub a1 a2) = (fv_aexp a1) +++ (fv_aexp a2)
+
 -- concatenate (removing duplicates from first list)
 (+++) :: Eq a => [a] -> [a] -> [a]
 [] +++ ys = ys
 (x:xs) +++ ys = if (elem x ys) then xs +++ ys else xs +++ (x:ys)
 
+
+fv_bexp :: Bexp -> [Var]
+fv_bexp  TRUE     = []
+fv_bexp  FALSE    = []
+fv_bexp (Eq  b1 b2) = (fv_aexp b1) +++ (fv_aexp b2)
+fv_bexp (Le  b1 b2) = (fv_aexp b1) +++ (fv_aexp b2)
+fv_bexp (Neg b  ) =  fv_bexp b
+fv_bexp (And b1 b2) = (fv_bexp b1) +++ (fv_bexp b2)
+
+fv_stm :: Stm -> [Var]
+fv_stm (Ass v a     )    = (fv_aexp a ) +++ [v]
+fv_stm (Skip        )    = [ ]
+fv_stm (Comp ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2)
+fv_stm (If b ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2) +++ (fv_bexp b)
+fv_stm (While b  ss )    = (fv_bexp b ) +++ (fv_stm ss )
+fv_stm (Block [(var,val)] decp stm ) =  (fv_aexp var)+++ (fv_stm stm )
+fv_stm (Call pname )    = (fv_bexp b ) +++ (fv_stm ss )
 
 n_val :: Num -> Z
 n_val a = a
@@ -266,7 +284,7 @@ update st i v v2
 ------------------------------------------------------------------------
 
 type Loc = Integer
-data Config_s = Inter_s Stm Store | (Final_s Store, EnvV )
+data Config_s = Inter_s Stm Store | Final_s (Store, EnvV)
 type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s { s_env :: Pname -> (Stm, EnvV, EnvP_s)}
@@ -297,9 +315,17 @@ static_envP _ = undefined
 static_envV :: EnvV
 static_envV = \p -> 0
 
-s_static :: Stm -> State -> State
-s_static stm s = lookup_s envv sto where
-                  sto = s_eval static_envV static_envP stm
+
+runStatic :: [(Var, Z)] -> Stm -> [(Var, Z)]
+runStatic vars stm = extractState (s_static stm (createState vars)) (fst (unzip vars))
+
+createState :: [(Var, Z)] -> State
+createState vars x = case elemIndex x (fst (unzip vars)) of
+    Just index -> snd (vars !! index)
+    Nothing -> 0
+
+extractState :: State -> [Var] -> [(Var, Z)]
+extractState state var_names = map (\var_name -> (var_name, state var_name)) var_names
 
 toSt :: Store -> EnvV -> State
 toSt sto envv var = (sto var) (At (envv var))
