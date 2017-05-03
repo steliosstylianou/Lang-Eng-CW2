@@ -246,15 +246,6 @@ fv_bexp (Le  b1 b2) = (fv_aexp b1) +++ (fv_aexp b2)
 fv_bexp (Neg b  ) =  fv_bexp b
 fv_bexp (And b1 b2) = (fv_bexp b1) +++ (fv_bexp b2)
 
-fv_stm :: Stm -> [Var]
-fv_stm (Ass v a     )    = (fv_aexp a ) +++ [v]
-fv_stm (Skip        )    = [ ]
-fv_stm (Comp ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2)
-fv_stm (If b ss1 ss2)    = (fv_stm ss1) +++ (fv_stm ss2) +++ (fv_bexp b)
-fv_stm (While b  ss )    = (fv_bexp b ) +++ (fv_stm ss )
-fv_stm (Block [(var,val)] decp stm ) =  (fv_aexp var)+++ (fv_stm stm )
-fv_stm (Call pname )    = (fv_bexp b ) +++ (fv_stm ss )
-
 n_val :: Num -> Z
 n_val a = a
 
@@ -278,7 +269,6 @@ update st i v v2
       | v == v2 = i
       | otherwise = (st v2)
 
-
 ------------------------------------------------------------------------
 -- STATIC
 ------------------------------------------------------------------------
@@ -288,6 +278,7 @@ data Config_s = Inter_s Stm Store | Final_s (Store, EnvV)
 type Store = Loc -> Z  --store location's value
 type EnvV = Var -> Loc -- store variable's location
 newtype EnvP_s = EnvP_s { s_env :: Pname -> (Stm, EnvV, EnvP_s)}
+
 
 next = 0
 
@@ -309,52 +300,44 @@ lookup_s  env sto = sto.env
 static_store :: Store
 static_store _ = 0
 
-static_envP :: EnvP_d
-static_envP _ = undefined
+static_envP :: EnvP_s
+static_envP = undefined
 
 static_envV :: EnvV
 static_envV = \p -> 0
 
-
-runStatic :: [(Var, Z)] -> Stm -> [(Var, Z)]
-runStatic vars stm = extractState (s_static stm (createState vars)) (fst (unzip vars))
-
-createState :: [(Var, Z)] -> State
-createState vars x = case elemIndex x (fst (unzip vars)) of
-    Just index -> snd (vars !! index)
-    Nothing -> 0
-
-extractState :: State -> [Var] -> [(Var, Z)]
-extractState state var_names = map (\var_name -> (var_name, state var_name)) var_names
-
-toSt :: Store -> EnvV -> State
-toSt sto envv var = (sto var) (At (envv var))
-
-
 var_state_s :: Var -> Stm -> Integer
-var_state_s v stm = undefined
+var_state_s v stm = state v
+          where state = s_static stm dynamic_state
+
+s_static :: Stm -> State -> State
+s_static stm state = lookup_s env s
+                where
+                  Final_s (s,env) = s_eval static_envV static_envP (Inter_s stm static_store)
 
 s_eval :: EnvV -> EnvP_s -> Config_s -> Config_s --pg 57
-s_eval envv envp (Inter_s (Ass x a) sto) = Final_s (general_update (sto) (a_val a (lookup_s envv sto )) (envv x)) --store,updated value, location
-s_eval envv envp (Inter_s (Skip) sto) = Final_s sto
-s_eval envv envp (Inter_s (Comp s1 s2) sto) = Final_s sto2
+s_eval envv envp (Inter_s (Ass x a) sto) = Final_s ((general_update (sto) (a_val a (lookup_s envv sto )) (envv x)),envv) --store,updated value, location
+s_eval envv envp (Inter_s (Skip) sto) = Final_s (sto,envv)
+s_eval envv envp (Inter_s (Comp s1 s2) sto) = Final_s (sto2,envv'')
                                               where
-                                                 Final_s sto1 = s_eval envv envp (Inter_s s1 sto)
-                                                 Final_s sto2 = s_eval envv envp (Inter_s s2 sto1)
+                                                 Final_s (sto1,envv') = s_eval envv envp (Inter_s s1 sto)
+                                                 Final_s (sto2,envv'') = s_eval envv' envp (Inter_s s2 sto1)
 s_eval envv envp (Inter_s (If bexp s1 s2) sto)
                           | b_val bexp (lookup_s envv sto ) = s_eval envv envp (Inter_s s1 sto)
                           | otherwise =  s_eval envv envp (Inter_s s2 sto)
 s_eval envv envp (Inter_s (While b ss) sto)
-                          | b_val b (lookup_s envv sto )  = Final_s sto2
-                          | otherwise = Final_s sto
+                          | b_val b (lookup_s envv sto )  = Final_s (sto2,envv'')
+                          | otherwise = Final_s (sto,envv)
                            where
-                           Final_s sto1 = s_eval envv envp (Inter_s ss sto)
-                           Final_s sto2 = s_eval envv envp  (Inter_s (While b ss) sto1)
-s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm s)
+                           Final_s (sto1,envv') = s_eval envv envp (Inter_s ss sto)
+                           Final_s (sto2,envv'') = s_eval envv' envp  (Inter_s (While b ss) sto1)
+s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s stm sto)
                                                      where
                                                        envp'        = s_updateDps envp envv decp
                                                        (envv',sto) = s_updateDvs decv envv s
-s_eval envv envp (Inter_s (Call name) s) = s_env envp name
+s_eval envv (EnvP_s envp) (Inter_s (Call name) s) = s_eval envv' envp' (Inter_s stm s)
+                                           where
+                                             (stm, envv', envp') = envp name
 
 --pg 58
 s_updateDvs :: DecV -> EnvV -> Store -> (EnvV, Store)
@@ -531,3 +514,5 @@ recursive_stm = parse "\
  \end; \
  \call fac1 \
 \end"
+
+fac = parse "/*fac_loop (p.23)*/\ny:=1;\nwhile !(x=1) do (\n y:=y*x;\n x:=x-1\n)"
