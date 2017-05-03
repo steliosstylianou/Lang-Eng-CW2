@@ -304,12 +304,6 @@ general_update st i v v2
 lookup_s ::EnvV -> Store -> State
 lookup_s  env sto = sto.env
 
-vars :: [Var]
-vars = ["x","y","z"]
-
-extractState :: State -> [(Var, Z)]
-extractState state  = map (\var_name -> (var_name, state var_name)) vars
-
 static_store :: Store
 static_store = \p -> if
                 | p == next -> 1
@@ -359,6 +353,7 @@ s_eval envv envp (Inter_s (Block decv decp stm) s) = s_eval envv' envp' (Inter_s
                                                      where
                                                        envp'        = s_updateDps envp envv decp
                                                        (envv',sto) = s_updateDvs decv envv s
+
 s_eval envv (EnvP_s envp) (Inter_s (Call name) s) = s_eval envv' envp' (Inter_s stm s)
                                            where
                                              (stm, envv', envp') = envp name
