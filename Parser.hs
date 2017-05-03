@@ -322,9 +322,9 @@ static_envV :: EnvV
 static_envV = \p -> 0
 
 s_static :: Stm -> State -> State
-s_static stm state = do
-                      (store, envv ) <- extract_store state (static_store) (static_envV) (fv_stm stm)
-                      return (lookup_s envv (s_eval envv static_envP (Inter_s stm store) ) )
+s_static stm state = lookup_s envv' store'
+                    where  Final_s (store', envv') = s_eval envv static_envP (Inter_s (stm) (store))
+                           (store, envv )  = extract_store state (static_store) (static_envV) (fv_stm stm)
 
 extract_store :: State -> Store -> EnvV -> [Var] -> (Store, EnvV)
 extract_store state store envv []   = (store, envv)
